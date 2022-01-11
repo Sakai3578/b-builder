@@ -9,7 +9,8 @@ OUTPUT_OUTPUT_DIRECTORY_NAME = 'output'
 OUTPUT_ARTICLE_DIRECTORY_NAME = 'article'
 OUTPUT_SEARCH_DIRECTORY_NAME = 'article'
 PANKUZU_HOME_DISPLAY_TEXT = 'ホーム'
-PICKUP_TAGS = ['IT活用経営', 'プログラミング', '経営コンサルティング']
+PICKUP_TAGS = ['IT活用経営', '経営コンサルティング', 'プログラミング']
+PUSH_CONTACT_TAGS = ['IT活用経営', '経営コンサルティング']
 
 RELATIVE_PREFIX_ARTICLE = '../../'
 RELATIVE_PREFIX_SEARCH = '../../'
@@ -46,8 +47,8 @@ def build(build_root_path):
         os.makedirs(output_directory_path + '/' + OUTPUT_SEARCH_DIRECTORY_NAME)
 
     header = _PartsBuilder.get_html_from_second_line_to_end(build_root_path + '/common_parts/header.html')
-    aside_for_article = _PartsBuilder.get_aside_html(build_root_path, is_index=False)
-    aside_for_index = _PartsBuilder.get_aside_html(build_root_path, is_index=True)
+    aside_for_article = _PartsBuilder.get_aside_html(build_root_path, is_index=False, relative_prefix=RELATIVE_PREFIX_ARTICLE)
+    aside_for_index = _PartsBuilder.get_aside_html(build_root_path, is_index=True, relative_prefix=RELATIVE_PREFIX_INDEX)
     footer = _PartsBuilder.get_html_from_second_line_to_end(build_root_path + '/common_parts/footer.html')
     head_infomation_map = _PartsBuilder.get_head_infomation_map(build_root_path)
 
@@ -67,7 +68,8 @@ def build(build_root_path):
         breadcrumbs_href_value__tag__map_list.append({'href_value':None, 'tag':tag})
 
         tag_en = _PartsBuilder.get_tag_en(tag)
-        save_dir = "{}/{}/{}".format(output_directory_path, OUTPUT_SEARCH_DIRECTORY_NAME, tag_en)
+        tag_escaped = _PartsBuilder.tag_escaping(tag_en)
+        save_dir = "{}/{}/{}".format(output_directory_path, OUTPUT_SEARCH_DIRECTORY_NAME, tag_escaped)
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
@@ -90,7 +92,8 @@ class ArticleListWrapper():
         self._tag_articles_map = {}
     def save_article_files(self, head_infomation_map, header, aside, footer, output_directory_path):
         for article in self._articles:
-            article.save_article_file(build_root_path=self._build_root_path, article_list_wrapper=self, head_infomation_map=head_infomation_map, header=header, aside=aside, footer=footer, output_directory_path=output_directory_path, articles_with_same_categpty=self.get_article_objects_with_tag(article._tags[0]))
+            articles_with_same_category, category_name = self.get_article_objects_and_tag_with_same_tag(article=article)
+            article.save_article_file(build_root_path=self._build_root_path, article_list_wrapper=self, head_infomation_map=head_infomation_map, header=header, aside=aside, footer=footer, output_directory_path=output_directory_path, articles_with_same_category=articles_with_same_category, category_name=category_name)
             for tag in article._tags:
                 if tag in self._tag_articles_map:
                     self._tag_articles_map[tag].append(article)
@@ -98,8 +101,15 @@ class ArticleListWrapper():
                     self._tag_articles_map[tag] = [article]
     def get_latest_article_object(self):
         return self._articles[0]
-    def get_article_objects_with_tag(self, tag):
-        return list(filter(lambda x: tag in x._tags, self._articles))
+    def get_article_objects_and_tag_with_same_tag(self, article):
+        if len(article._tags) <= 1:
+            return list(filter(lambda x: article._tags[0] in x._tags, self._articles)), article._tags[0]
+        article_with_second_tag = list(filter(lambda x: article._tags[1] in x._tags, self._articles))
+        if len(article_with_second_tag) >= 3:
+            return article_with_second_tag, article._tags[1]
+        else:
+            return list(filter(lambda x: article._tags[0] in x._tags, self._articles)), article._tags[0]
+
     def get_all_tags(self):
         result = []
         for article in self._articles:
@@ -127,25 +137,29 @@ class Article():
             else:
                 self._update_date = None
 
-    def save_article_file(self, build_root_path, article_list_wrapper, head_infomation_map, header, aside, footer, output_directory_path, articles_with_same_categpty):
+    def save_article_file(self, build_root_path, article_list_wrapper, head_infomation_map, header, aside, footer, output_directory_path, articles_with_same_category, category_name):
         article_build_result_text = _PartsBuilder.build_head(build_root_path, head_infomation_map=head_infomation_map, article=self) + WRAPPER
         article_build_result_text += '<body>' + WRAPPER
         article_build_result_text += header.replace('h1', 'h2') + WRAPPER
 
-        category = self._tags[0]
-        category_en = _PartsBuilder.get_tag_en(category)
+        main_category = self._tags[0]
+        main_category_en = _PartsBuilder.get_tag_en(main_category)
         href_value__tag__map_list = []
         href_value__tag__map_list.append({'href_value':head_infomation_map['blog_root_url'], 'tag':PANKUZU_HOME_DISPLAY_TEXT})
-        href_value__tag__map_list.append({'href_value':'{}{}/{}/'.format(head_infomation_map['blog_root_url'], OUTPUT_SEARCH_DIRECTORY_NAME, category_en), 'tag':category})
+        href_value__tag__map_list.append({'href_value':'{}{}/{}/'.format(head_infomation_map['blog_root_url'], OUTPUT_SEARCH_DIRECTORY_NAME, main_category_en), 'tag':main_category})
         href_value__tag__map_list.append({'href_value':None, 'tag':'本記事'})
         article_build_result_text += _PartsBuilder.write_pankuzu_list_html(href_value__tag__map_list)
+        image_link = '../../image/index/{}'.format(self._meta_infomation_map['article_image_filename'])
 
         article_build_result_text += '<main id="main" itemprop="mainContentOfPage" itemscope itemtype="http://schema.org/Blog">' + WRAPPER
         article_build_result_text += '<article itemscope itemtype="http://schema.org/BlogPosting" itemprop="blogPost">' + WRAPPER
         article_build_result_text += '<h1 itemprop="name headline">' + WRAPPER
-        article_build_result_text += '    {}'.format(self._meta_infomation_map['article_title'].replace('】', '】<br>').replace('（', '<br><span class="title-weak">（').replace('）', '）</span>').replace(' - ', '<br>').replace('、', '、<br class="wrap-if-wide-screen">')) + WRAPPER
+        article_build_result_text += '    {}'.format(self._meta_infomation_map['article_title'].replace('】', '】<br>').replace('（', '<br><span class="title-weak">（').replace('）', '）</span>').replace(' - ', '<br>')) + WRAPPER
         article_build_result_text += '</h1>' + WRAPPER
         article_build_result_text += '<div id="article-header">' + WRAPPER
+        article_build_result_text += '    <div id="article-header-image">' + WRAPPER
+        article_build_result_text += f'        <img class="article-image" src="{image_link}" alt="記事イメージ"/>' + WRAPPER
+        article_build_result_text += '    </div>' + WRAPPER
         article_build_result_text += '    <p>' + WRAPPER
         article_build_result_text += '        {}年{}月{}日'.format(self._post_date.year, self._post_date.month, self._post_date.day) + WRAPPER
         if self._update_date is not None:
@@ -163,19 +177,17 @@ class Article():
         text = '<div id="article-main" itemprop="articleBody">' + WRAPPER
         lines = self._contents.split('\n')
 
-        titles = []
         code_now = False
-        for line in lines:
-            if line.startswith(MARKDOWN_CODE_FLAG):
-                code_now = not code_now
-            elif not code_now and line.startswith('#') and  line[1] != '#':
-                titles.append(line[1:])
+        TABLE_OF_CONTENTS_PLACEHOLDER = 'title-placeholder-ds03445v5t3143f3965634'
+        table_of_contents = []
+        current_title_of_content = None
 
         code_now = False
-        quote_now = False
+        ad_added = False
         table_of_contents_witten = False
         subtitle_counter = 1
         has_syntax_highlight = False
+        need_to_write_purpose = True
 
         for i in range(len(lines)):
             line = lines[i]
@@ -199,47 +211,85 @@ class Article():
                         text += f'<span class="language">{language}</span>'
                     text += '<code>'
                 code_now = not code_now
+            elif line.startswith('>'):
+                if i == 0 or not lines[i - 1].startswith('>'):
+                    text += '<div class="quote">'
+
+                if len(line) >= 2:
+                    text += line[1:] + '<br>'
+                else:
+                    text += '<br>'
+
+                if len(lines) == i or not lines[i + 1].startswith('>'):
+                    text += '</div>'
+
             elif code_now:
                 text += line.replace('<', '&lt;').replace('>', '&gt;')
-            elif line.startswith('!Quote'):
-                if quote_now:
-                    text += '</div>'
-                    text += '<p class="quote-source">'
-                    text += "引用元：" + line.replace('!Quote!', '')
-                    text += '</p>'
-                else:
-                    text += '<div class="quote">'
-                quote_now = not quote_now
+            elif line.startswith('a!'):
+                sp = line.split('!')
+                link_href = sp[2]
+                link_title = sp[3]
+                link_description = sp[4]
+                link_img = '<img src="../../image/{}/{}" alt="{}" width="100" height="100"/>'.format(os.path.basename(self._article_file_path).replace('.html', ''), sp[1], link_title)
+
+                text += '<div class="link-box">' + WRAPPER
+                text += '    <div class="link-img-column">' + WRAPPER
+                text += f'        {link_img}' + WRAPPER
+                text += '    </div>' + WRAPPER
+                text += '    <div class="link-text-column">' + WRAPPER
+                text += f'       <span class="related-link-prefix">関連リンク：</span><a href="{link_href}" target="_blank" rel="noopener noreferrer"><span class="link-title">{link_title}</span></a>' + WRAPPER
+                text += '        <div class="link-description">' + WRAPPER
+                text += f'            <span>{link_description}</span>' + WRAPPER
+                text += '        </div>' + WRAPPER
+                text += '    </div>' + WRAPPER
+                text += '</div>' + WRAPPER
+            elif line.startswith('!Quote!'):
+                text += '<p class="quote-source paragraph-on-article">'
+                text += "    引用元：" + line.replace('!Quote!', '')
+                text += '</p>'
             elif line == '':
                 continue
             elif line.startswith('#'):
+                if line.startswith('#####'):
+                    tag = 'h6'
+                    text += f'<{tag}>' + WRAPPER
+                    text += f'    {line[3:]}' + WRAPPER
+                    text += f'</{tag}>' + WRAPPER
+                if line.startswith('####'):
+                    tag = 'h5'
+                    text += f'<{tag}>' + WRAPPER
+                    text += f'    {line[3:]}' + WRAPPER
+                    text += f'</{tag}>' + WRAPPER
                 if line.startswith('###'):
                     tag = 'h4'
                     text += f'<{tag}>' + WRAPPER
                     text += f'    {line[3:]}' + WRAPPER
                     text += f'</{tag}>' + WRAPPER
                 elif line.startswith('##'):
-                    tag = 'h2'
-                    text += f'<{tag}>' + WRAPPER
-                    text += f'    <span>{line[2:]}</span>' + WRAPPER
-                    text += f'</{tag}>' + WRAPPER
+                    class_attr_value="markered-title"
+                    if need_to_write_purpose:
+                        text += f'<h2 class="{class_attr_value}"><span>{line[2:]}</span></{tag}>' + WRAPPER
+                    else:
+                        tag_id = f'article-semi-subtitle-{len(table_of_contents)}-{len(current_title_of_content._children)}'
+                        current_title_of_content._children.append(_TableOfContent(id=tag_id, display=line[2:]))
+                        tag = 'h3'
+                        text += f'<h3 id="{tag_id}" class="{class_attr_value}"><span>{line[2:]}</span></{tag}>' + WRAPPER
                 else:
-                    tag = f'h3'
-                    attibute = f' id="article-subtilte-{subtitle_counter}"'
+                    if current_title_of_content is not None:
+                        table_of_contents.append(current_title_of_content)
+                    tag_id = f'article-subtitle-{len(table_of_contents)}'
+                    current_title_of_content = _TableOfContent(id=tag_id, display=line[1:])
+                    need_to_write_purpose = False
+                    tag = f'h2'
+                    attibute = f' id="{tag_id}" class="section-title"'
                     subtitle_counter += 1
                     if not table_of_contents_witten:
                         table_of_contents_witten = True
-                        text += '<div id="table-of-contents">'
-                        text += '    <p>'
-                        text += '        ◇目次'
-                        text += '    </p>'
-                        text += '    <ol>' + WRAPPER
-                        for i in range(len(titles)):
-                            text += '    <li>' + WRAPPER
-                            text += f'        <a href="#article-subtilte-{i + 1}">{titles[i]}</a>' + WRAPPER
-                            text += '    </li>' + WRAPPER
-                        text += '    </ol>' + WRAPPER
-                        text += '</div>' + WRAPPER
+                        text += TABLE_OF_CONTENTS_PLACEHOLDER + WRAPPER
+                    elif line.startswith('#結び') and not ad_added:
+                        ad_added = True
+                        with open(build_root_path + '/common_parts/google_ad_inline.txt', 'r', encoding='UTF-8') as f:
+                            text += f.read()
                     text += f'<{tag}{attibute}>{line[1:]}</{tag}>' + WRAPPER
             elif line.startswith('-'):
                 written = False
@@ -257,9 +307,15 @@ class Article():
                     text += '</ul></div>' + WRAPPER
             elif line.startswith('!'):
                 img_info = line[1:].split('!')
+                if len(img_info) <= 1:
+                    print(f'error: {self._article_file_path}, {line}')
+                    raise Exception()
                 text += '<figure>' + WRAPPER
                 if img_info[1] != '':
                     text += f'    <figcaption>{img_info[1]}</figcaption>' + WRAPPER
+                if len(img_info) >= 3:
+                    alt = img_info[2]
+                elif img_info[1] != '':
                     alt = img_info[1].split('。')[0]
                 else:
                     alt = img_info[0].split('.')[0]
@@ -268,23 +324,58 @@ class Article():
             elif line.startswith('$'):
                 article = list(filter(lambda x: os.path.basename(x._article_file_path).replace('.html', '') == line[1:], article_list_wrapper._articles))[0]
                 relative_article_internal_link = _PartsBuilder.get_article_relative_url(RELATIVE_PREFIX_ARTICLE, head_infomation_map=head_infomation_map, article=article)
-                text += '<p>'
-                text += '    <div class="related-article">'
-                text += f'        <span>関連記事：<a href="{relative_article_internal_link}">{article._meta_infomation_map["article_title"]}</a></span>'
-                text += '    </div>'
-                text += '</p>'
+                text += '<div class="related-article">' + WRAPPER
+                text += f'    <span>関連記事：<a href="{relative_article_internal_link}">{article._meta_infomation_map["article_title"]}</a></span>' + WRAPPER
+                text += '</div>' + WRAPPER
             else:
-                text += '<p>' + WRAPPER
+                text += '<p class="paragraph-on-article">' + WRAPPER
                 text += '    ' + line + WRAPPER
                 text += '</p>' + WRAPPER
             text += WRAPPER
+
+        table_of_contents.append(current_title_of_content)
+        table_of_contents_text = ''
+        table_of_contents_text += '<div id="table-of-contents">' + WRAPPER
+        table_of_contents_text += '    <p>' + WRAPPER
+        table_of_contents_text += '        ◇目次' + WRAPPER
+        table_of_contents_text += '    </p>' + WRAPPER
+        table_of_contents_text += '    <ol>' + WRAPPER
+        for i in range(len(table_of_contents)):
+            table_of_contents_text += table_of_contents[i].write_table_of_contents_part()
+        table_of_contents_text += '    </ol>' + WRAPPER
+        table_of_contents_text += '</div>' + WRAPPER
+        text = text.replace(TABLE_OF_CONTENTS_PLACEHOLDER, table_of_contents_text)
+
+        if main_category in PUSH_CONTACT_TAGS:
+            text += '<h2 class="section-title">記事筆者へのお問い合わせ</h2>' + WRAPPER
+            text += '<p class="paragraph-on-article">' + WRAPPER
+            text += '    当社では、IT活用をはじめ、業務効率化やM&amp;A、管理会計など幅広い分野でコンサルティング事業・IT開発事業を行っております。' + WRAPPER
+            text += '</p>' + WRAPPER
+            text += '<p class="paragraph-on-article">' + WRAPPER
+            text += '    この記事をご覧になり、もし相談してみたい点などがあれば、ぜひ問い合わせフォームまでご連絡ください。' + WRAPPER
+            text += '</p>' + WRAPPER
+            text += '<p class="paragraph-on-article">' + WRAPPER
+            text += '    皆様のご投稿をお待ちしております。' + WRAPPER
+            text += '</p>' + WRAPPER
+            text += '<a href="https://it.sakai-sc.co.jp/contact/" target="_blank">' + WRAPPER
+            text += '    <p class="button-on-article">' + WRAPPER
+            text += '        記事筆者へ問い合わせする' + WRAPPER
+            text += '    </p>' + WRAPPER
+            text += '</a>' + WRAPPER
         text += '</div>' + WRAPPER
 
-        article_build_result_text += text.replace('<strong>', '<span class="strong">').replace('</strong>', '</span>')
+
+        #article_build_result_text += text.replace('<strong>', '<span class="strong">').replace('</strong>', '</span>')
+        article_build_result_text += text
 
         article_absolute_url = _PartsBuilder.get_article_absolute_url(head_infomation_map=head_infomation_map, article=self)
         article_title_quote = urllib.parse.quote(self._meta_infomation_map["article_title"])
 
+        if not ad_added:
+            with open(build_root_path + '/common_parts/google_ad_inline.txt', 'r', encoding='UTF-8') as f:
+                article_build_result_text += f.read()
+
+        article_build_result_text += f'<a href="https://www.sakai-sc.co.jp/lp/it/" target="_blank" rel="noopener noreferrer"><img src="{RELATIVE_PREFIX_ARTICLE}image/lp-banner.webp" alt="IT活用経営を実現する - 堺財経電算合同会社" style="width: 100%; margin: 10px 0 10px 0;"></a>' + WRAPPER
         article_build_result_text += '<div id="share_on_sns">' + WRAPPER
         article_build_result_text += '    <h2>SNSでシェア</h2>' + WRAPPER
         article_build_result_text += '    <ul id="sns_button">' + WRAPPER
@@ -331,11 +422,10 @@ class Article():
         article_build_result_text += '    </ul>' + WRAPPER
         article_build_result_text += '</div>' + WRAPPER
 
-        current_category = self._meta_infomation_map['tags'].split(',')[0]
         related_article_text = '<div id="news">' + WRAPPER
-        related_article_text += f'    <h2>「{current_category}」カテゴリーの最新記事</h2>' + WRAPPER
+        related_article_text += f'    <h2>「{category_name}」の関連記事</h2>' + WRAPPER
         related_article_count = 0
-        for article_with_same_categpty in articles_with_same_categpty:
+        for article_with_same_categpty in articles_with_same_category:
             related_article_text += _PartsBuilder.get_index_article_block(head_infomation_map=head_infomation_map, article=article_with_same_categpty, relative_path_prefix='../../') + WRAPPER
             if related_article_count == 4:
                 break
@@ -344,21 +434,23 @@ class Article():
         related_article_text += '</div>' + WRAPPER
         if related_article_count > 0:
             article_build_result_text += related_article_text
+            article_build_result_text += '<p class="other-articles-link-box">'
+            article_build_result_text += f'    <a href="../{_PartsBuilder.tag_escaping(_PartsBuilder.get_tag_en(category_name))}/" class="other-articles-link">'
+            article_build_result_text += f'        「{category_name}」の関連記事をもっと見る'
+            article_build_result_text += '    </a>'
+            article_build_result_text += '</p>'
+        if category_name != main_category:
             article_build_result_text += '<p>'
-            article_build_result_text += f'    <span>＞ <a href="./">「{current_category}」カテゴリーの記事をもっと見る</a></span>'
+            article_build_result_text += f'    <a href="../{_PartsBuilder.tag_escaping(_PartsBuilder.get_tag_en(main_category))}/" class="other-articles-link">'
+            article_build_result_text += f'        「{main_category}」の関連記事をもっと見る'
+            article_build_result_text += '    </a>'
             article_build_result_text += '</p>'
 
         article_build_result_text += '</article>' + WRAPPER
         article_build_result_text += aside + WRAPPER
         article_build_result_text += '</main>'
         article_build_result_text += footer + WRAPPER
-        if has_syntax_highlight:
-            relateive_prefix = RELATIVE_PREFIX_ARTICLE
-            article_build_result_text += '    <script src="{}js/highlight.min.js"></script>'.format(relateive_prefix) + WRAPPER
-            article_build_result_text += '    <link rel="stylesheet" type="text/css" href="{}style/stackoverflow-dark.min.css"/>'.format(relateive_prefix) + WRAPPER
-            article_build_result_text += '    <script type="text/javascript">' + WRAPPER
-            article_build_result_text += '        hljs.initHighlightingOnLoad();' + WRAPPER
-            article_build_result_text += '    </script>' + WRAPPER
+        article_build_result_text += _PartsBuilder.body_end_scripts(has_syntax_highlight=has_syntax_highlight, relateive_prefix=RELATIVE_PREFIX_ARTICLE)
         article_build_result_text += '</body>' + WRAPPER
         article_build_result_text += '</html>' + WRAPPER
         output_path = "{}/{}/{}".format(output_directory_path, OUTPUT_ARTICLE_DIRECTORY_NAME, _PartsBuilder.get_tag_en(self._tags[0]))
@@ -369,9 +461,10 @@ class Article():
 
 
 class _PartsBuilder:
-
     @classmethod
     def build_head(cls, build_root_path, head_infomation_map, article=None, is_index=False, is_search_result=False, tag=None):
+        now = datetime.datetime.now()
+        deploy_timestamp = f'deploy-id={now.year + now.month + now.day + now.hour + now.minute + now.second}'
         if is_index:
             relateive_prefix = RELATIVE_PREFIX_INDEX
             page_title = "{} | {}".format(head_infomation_map['blog_title'], head_infomation_map['blog_subtitle'])
@@ -419,18 +512,19 @@ class _PartsBuilder:
         text += '    <meta name="viewport" content="width=device-width, initial-scale=1">' + WRAPPER
         text += '    <meta name="description" content="{}">'.format(description) + WRAPPER
         text += '    <title>{}</title>'.format(page_title) + WRAPPER
-        text += '    <link rel="stylesheet" type="text/css" href="{}style/hf.css" />'.format(relateive_prefix) + WRAPPER
-        text += '    <link rel="stylesheet" type="text/css" href="{}style/aside.css" />'.format(relateive_prefix) + WRAPPER
+        text += '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3705637168814299"' + WRAPPER
+        text += '    crossorigin="anonymous"></script>' + WRAPPER
+        text += '    <link rel="stylesheet" type="text/css" href="{}style/hf.css?{}" />'.format(relateive_prefix, deploy_timestamp) + WRAPPER
+        text += '    <link rel="stylesheet" type="text/css" href="{}style/aside.css?{}" />'.format(relateive_prefix, deploy_timestamp) + WRAPPER
         if is_index:
-            text += '    <link rel="stylesheet" type="text/css" href="{}style/index.css" />'.format(relateive_prefix) + WRAPPER
+            text += '    <link rel="stylesheet" type="text/css" href="{}style/index.css?{}" />'.format(relateive_prefix, deploy_timestamp) + WRAPPER
         elif is_search_result:
-            text += '    <link rel="stylesheet" type="text/css" href="{}style/index.css" />'.format(relateive_prefix) + WRAPPER
+            text += '    <link rel="stylesheet" type="text/css" href="{}style/index.css?{}" />'.format(relateive_prefix, deploy_timestamp) + WRAPPER
             if not tag in PICKUP_TAGS:
                 text += '    <meta name="robots" content="noindex">' + WRAPPER
         else:
-            text += '    <link rel="stylesheet" type="text/css" href="{}style/article.css" />'.format(relateive_prefix) + WRAPPER
-            text += '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3705637168814299"' + WRAPPER
-            text += '    crossorigin="anonymous"></script>' + WRAPPER
+            now = datetime.datetime.now()
+            text += '    <link rel="stylesheet" type="text/css" href="{}style/article.css?{}" />'.format(relateive_prefix, deploy_timestamp) + WRAPPER
         with open(build_root_path + '/google_analytics/google_analytics.txt', 'r', encoding='UTF-8') as ga:
             text += ga.read()
         text += '</head>' + WRAPPER
@@ -460,7 +554,7 @@ class _PartsBuilder:
         index_build_result_text += f'        <h2 class="column-title">{display_title}</h2>' + WRAPPER
         index_build_result_text += '        <div id="news">' + WRAPPER
         for article in articles:
-            index_build_result_text += cls.get_index_article_block(head_infomation_map=head_infomation_map, article=article, relative_path_prefix=relative_path_prefix, is_search_result=not is_index)
+            index_build_result_text += cls.get_index_article_block(head_infomation_map=head_infomation_map, article=article, relative_path_prefix=relative_path_prefix)
         index_build_result_text += '        </div>' + WRAPPER
         index_build_result_text += '    </div>' + WRAPPER
         if is_index:
@@ -469,11 +563,12 @@ class _PartsBuilder:
             index_build_result_text += aside
         index_build_result_text += '</main>' + WRAPPER
         index_build_result_text += footer + WRAPPER
+        index_build_result_text += cls.body_end_scripts(has_syntax_highlight=False, relateive_prefix=relative_path_prefix)
         index_build_result_text += '</body>' + WRAPPER
         index_build_result_text += '</html>' + WRAPPER
         with open(output_file_path, mode="w", encoding='UTF-8') as f:
             f.write(index_build_result_text)
-        
+
     @classmethod
     def get_head_infomation_map(cls, build_root_path):
         with open(build_root_path + '/head-items.txt', 'r', encoding='UTF-8') as f:
@@ -515,7 +610,7 @@ class _PartsBuilder:
             result[kv[0]] = kv[1]
         return result
     @classmethod
-    def get_index_article_block(cls, head_infomation_map, article, relative_path_prefix, is_search_result=False):
+    def get_index_article_block(cls, head_infomation_map, article, relative_path_prefix):
         image_link = '{}image/index/{}'.format(relative_path_prefix, article._meta_infomation_map['article_image_filename'])
         article_link = cls.get_article_relative_url(relative_path_prefix, head_infomation_map=head_infomation_map, article=article)
 
@@ -540,6 +635,30 @@ class _PartsBuilder:
         index_build_result_text += '            </div>' + WRAPPER
         index_build_result_text += '        </div>' + WRAPPER
         return index_build_result_text
+
+    @classmethod
+    def body_end_scripts(cls, has_syntax_highlight, relateive_prefix):
+        text = ''
+        if has_syntax_highlight:
+            text += '    <script src="{}js/highlight.min.js"></script>'.format(relateive_prefix) + WRAPPER
+            text += '    <link rel="stylesheet" type="text/css" href="{}style/tomorrow-night-bright.min.css"/>'.format(relateive_prefix) + WRAPPER
+            text += '    <script type="text/javascript">' + WRAPPER
+            text += '        hljs.initHighlightingOnLoad();' + WRAPPER
+            text += '    </script>' + WRAPPER
+        text += '    <script>' + WRAPPER
+        text += '        (adsbygoogle = window.adsbygoogle || []).push({});' + WRAPPER
+        text += '        (adsbygoogle = window.adsbygoogle || []).push({});' + WRAPPER
+        if relateive_prefix != RELATIVE_PREFIX_INDEX:
+            text += '        (adsbygoogle = window.adsbygoogle || []).push({});' + WRAPPER
+        text += '    </script>' + WRAPPER
+        return text
+
+    @classmethod
+    def tag_display(cls, tag):
+        return tag.replace('&', '&amp;')
+    @classmethod
+    def tag_escaping(cls, tag):
+        return tag.replace('&', '-and-').replace('#', '-sharp-')
     @classmethod
     def get_tag_en(cls, tag):
         if tag in tag_ens:
@@ -549,13 +668,15 @@ class _PartsBuilder:
     @classmethod
     def write_tag_link(cls, tag, is_index):
         tag_en = cls.get_tag_en(tag)
+        tag_escaped = cls.tag_escaping(tag_en)
+        tag_for_display = cls.tag_display(tag)
         if is_index:
-            link = '{}/{}/'.format(OUTPUT_SEARCH_DIRECTORY_NAME, tag_en)
+            link = '{}/{}/'.format(OUTPUT_SEARCH_DIRECTORY_NAME, tag_escaped)
         else:
-            link = '../{}/'.format(tag_en)
+            link = '../{}/'.format(tag_escaped)
         tag_link_text = '        <li class="tag">' + WRAPPER
         tag_link_text += '            <a href="{}" rel="tag">'.format(link) + WRAPPER
-        tag_link_text += '                {}'.format(tag) + WRAPPER
+        tag_link_text += '                {}'.format(tag_for_display) + WRAPPER
         tag_link_text += '            </a>' + WRAPPER
         tag_link_text += '        </li>' + WRAPPER
         return tag_link_text
@@ -600,22 +721,25 @@ class _PartsBuilder:
                 else:
                     os.remove(target)
     @classmethod
-    def get_aside_html(cls, build_root_path, is_index):
+    def get_aside_html(cls, build_root_path, is_index, relative_prefix):
         text = '<aside role="complementary" itemscope itemtype="http://schema.org/WPSideBar">' + WRAPPER
-        if is_index:
-            text += '    <div id="about-this-website">' + WRAPPER
-            text += '        <h2>このサイトについて</h2>' + WRAPPER
-            text += '        <p>' + WRAPPER
-            text += '             <a href="https://www.sakai-sc.co.jp/" target="_blank" rel="noopener noreferrer">堺財経電算合同会社</a>が運営するブログメディアサイトです。業務の一環として、中小企業の経営×IT活用術やプログラミングの話題を中心に発信しています。' + WRAPPER
-            text += '        </p>' + WRAPPER
-            text += '        <p>' + WRAPPER
-            text += '             経営コンサルティング全般からシステム設計、コーディングまで最前線で何でもこなしている、代表者の堺が執筆しています。' + WRAPPER
-            text += '        </p>' + WRAPPER
-            text += '        <p>' + WRAPPER
-            text += '             是非ご一読のほどよろしくお願いします。' + WRAPPER
-            text += '        </p>' + WRAPPER
-            text += '    </div>' + WRAPPER
+        text += '    <div id="about-this-website">' + WRAPPER
+        text += '        <h2>このサイトについて</h2>' + WRAPPER
+        text += '        <p class="aside-text-paragraph">' + WRAPPER
+        text += '             <a href="https://www.sakai-sc.co.jp/" target="_blank" rel="noopener noreferrer">堺財経電算合同会社</a>が運営するブログメディアサイトです。業務の一環として、中小企業の経営×IT活用術やプログラミングの話題を中心に発信しています。' + WRAPPER
+        text += '        </p>' + WRAPPER
+        text += '        <p class="aside-text-paragraph">' + WRAPPER
+        text += '             経営コンサルティング全般からシステム設計、コーディングまで最前線で何でもこなしている、代表者の堺が執筆しています。' + WRAPPER
+        text += '        </p>' + WRAPPER
+        text += '        <p class="aside-text-paragraph">' + WRAPPER
+        text += '             是非ご一読のほどよろしくお願いします。' + WRAPPER
+        text += '        </p>' + WRAPPER
+        text += '    </div>' + WRAPPER
         text += cls.get_html_from_second_line_to_end(build_root_path + '/common_parts/author.html') + WRAPPER
+        #text += '    <span style="color:gray;font-size:15px;">スポンサーリンク</span>' + WRAPPER
+        with open(build_root_path + '/common_parts/google_ad_vertical.txt', 'r', encoding='UTF-8') as f:
+            text += f.read()
+        text += f'    <a href="https://www.sakai-sc.co.jp/lp/it/" target="_blank" rel="noopener noreferrer"><img src="{relative_prefix}image/lp-square.webp" alt="IT活用経営を実現する - 堺財経電算合同会社" style="width: 100%;margin: 20px 0 20px 0;"></a>' + WRAPPER
         text += '</aside>' + WRAPPER
         if is_index:
             text = text.replace('../', '')
@@ -649,6 +773,25 @@ class _PartsBuilder:
         text += '</urlset>' + WRAPPER
         return text
 
+class _TableOfContent:
+    def __init__(self, id, display):
+        self._id = id
+        self._display = display
+        self._children = []
+    def write_table_of_contents_part(self):
+        text = ''
+        text += '        <li>' + WRAPPER
+        text += f'            <a href="#{self._id}">{self._display}</a>' + WRAPPER
+        if len(self._children) > 0:
+            text += '            <ul class="child-titles">' + WRAPPER
+            for i in range(len(self._children)):
+                child = self._children[i]
+                text += '                <li>' + WRAPPER
+                text += f'                    <a href="#{child._id}">{child._display}</a>' + WRAPPER
+                text += '                </li>' + WRAPPER
+            text += '            </ul>' + WRAPPER
+        text += '        </li>' + WRAPPER
+        return text
 
 if __name__ == '__main__':
     main()
