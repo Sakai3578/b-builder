@@ -4,13 +4,22 @@ import glob
 import os
 import sys
 import shutil
+from PIL import Image, ImageFont, ImageDraw
+import cv2
+import numpy as np
+
+#Build Settings
+OG_IMAGE_BASE = 'og-image-base.png'
+OG_IMAGE_FONT_FILE = 'GenShinGothic-Bold.ttf'
+PICKUP_TAGS = ['IT活用経営', '経営コンサルティング', 'プログラミング']
+PUSH_CONTACT_TAGS = ['IT活用経営', '経営コンサルティング']
 
 OUTPUT_OUTPUT_DIRECTORY_NAME = 'output'
 OUTPUT_ARTICLE_DIRECTORY_NAME = 'article'
 OUTPUT_SEARCH_DIRECTORY_NAME = 'article'
+OUTPUT_IMAGE_DIRECTORY_NAME = 'image'
+OUTPUT_OG_IMAGE_DIRECTORY_NAME = 'og-images'
 PANKUZU_HOME_DISPLAY_TEXT = 'ホーム'
-PICKUP_TAGS = ['IT活用経営', '経営コンサルティング', 'プログラミング']
-PUSH_CONTACT_TAGS = ['IT活用経営', '経営コンサルティング']
 
 RELATIVE_PREFIX_ARTICLE = '../../'
 RELATIVE_PREFIX_SEARCH = '../../'
@@ -75,6 +84,11 @@ def build(build_root_path):
 
         _PartsBuilder.save_index_or_search_file(build_root_path, head_infomation_map=head_infomation_map, articles=articles_with_the_tag, header=header, aside=aside_for_article, footer=footer, output_file_path=f'{save_dir}/index.html', display_title=f'{tag} を含む記事の一覧', is_index=False, breadcrumbs_href_value__tag__map_list=breadcrumbs_href_value__tag__map_list)
 
+    #og-images
+    for article in article_list_wrapper._articles:
+        og_img = article.generate_og_image()
+        Image.fromarray(og_img).save(f'{output_directory_path}/{article.get_og_image_save_relative_path()}')
+
     #build sitemap
     sitemap_content = _PartsBuilder.sitemap_builder(head_infomation_map=head_infomation_map, article_list_wrapper=article_list_wrapper)
     with open("{}/sitemap.xml".format(output_directory_path), mode="w", encoding='UTF-8') as f:
@@ -138,6 +152,11 @@ class Article():
                 self._update_date = None
 
     def save_article_file(self, build_root_path, article_list_wrapper, head_infomation_map, header, aside, footer, output_directory_path, articles_with_same_category, category_name):
+
+        #for img test
+        #og_img = self.generate_og_image()
+        #Image.fromarray(og_img).save(f'C:/Users/sakai/Desktop/ewrw/{os.path.basename(self._article_file_path)}.png')
+
         article_build_result_text = _PartsBuilder.build_head(build_root_path, head_infomation_map=head_infomation_map, article=self) + WRAPPER
         article_build_result_text += '<body>' + WRAPPER
         article_build_result_text += header.replace('h1', 'h2') + WRAPPER
@@ -459,6 +478,53 @@ class Article():
         with open("{}/{}".format(output_path, os.path.basename(self._article_file_path)), mode="w", encoding='UTF-8') as f:
             f.write(article_build_result_text)
 
+    def get_og_image_save_relative_path(self):
+        return f'{OUTPUT_OG_IMAGE_DIRECTORY_NAME}/{os.path.basename(self._article_file_path).replace(".html", "")}.png'
+
+    def generate_og_image(self):
+        img = cv2.imread(OG_IMAGE_BASE)
+        encode = 'utf-8'
+        line_max_chars = 40
+        message_base = self._meta_infomation_map['article_title'].replace('&amp;', '&')#.replace('】', '】\n').replace('（', '\n（').replace(' - ', '\n')
+
+        msg_lines = []
+        msg_line = ''
+        for i in range(len(message_base)):
+            char = message_base[i]
+            msg_line += char
+            if char == '】' or ((char == '）' or char == '-' or char == '、') and len(msg_line)) > 10:
+                msg_lines.append(msg_line)
+                if char == '】':
+                    msg_lines.append('')
+                msg_line = ''
+            elif len(msg_line) >= line_max_chars / 2:
+                msg_lines.append(msg_line)
+                msg_line = ''
+            elif len(msg_line) >= line_max_chars / 2 - 5 and len(message_base) > i + 1 and (message_base[i + 1] == '？' or message_base[i + 1] == '、'  or message_base[i + 1] == '。'):
+                msg_lines.append(msg_line)
+                msg_line = ''
+        if msg_lines != '':
+            msg_lines.append(msg_line)
+
+        img = Image.fromarray(img)
+        draw = ImageDraw.Draw(img)
+
+        for i in range(len(msg_lines)):
+            font_size = 50
+            if i == 0:
+                offset_to_y = 100 
+                if '【' in msg_lines[i] and len(msg_lines[i].encode(encode)) < line_max_chars:
+                    font_size = 62
+            elif i == 1 and '】' in msg_lines[i]:
+                font_size = 62
+                offset_to_y += 77
+            else:
+                offset_to_y += 60
+            font = ImageFont.truetype(OG_IMAGE_FONT_FILE, font_size)
+            draw.text((80, offset_to_y), msg_lines[i], font=font, fill=(64, 64, 64, 0))
+        img = np.array(img)
+
+        return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 class _PartsBuilder:
     @classmethod
@@ -484,7 +550,10 @@ class _PartsBuilder:
             description = head_infomation_map['blog_description']
 
         text = '<!DOCTYPE html>' + WRAPPER
-        text += '<html lang="ja" prefix="og: http://ogp.me/ns#">' + WRAPPER
+        if article is None:
+            text += '<html lang="ja"  prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# article: http://ogp.me/ns/article#">' + WRAPPER
+        else:
+            text += '<html lang="ja"  prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# website: http://ogp.me/ns/website#">' + WRAPPER
         text += '<head>' + WRAPPER
         text += '    <meta charset="UTF-8">' + WRAPPER
         text += '    <meta http-equiv="X-UA-Compatible" content="IE=edge">' + WRAPPER
@@ -497,7 +566,10 @@ class _PartsBuilder:
             text += '    <meta property="og:type" content="blog" />' + WRAPPER
         else:
             text += '    <meta property="og:type" content="article" />' + WRAPPER
-        text += '    <meta property="og:image" content="{}" />'.format(head_infomation_map['og_image']) + WRAPPER
+        if article is None:
+            text += '    <meta property="og:image" content="{}" />'.format(head_infomation_map['og_image']) + WRAPPER
+        else:
+            text += '    <meta property="og:image" content="{}" />'.format(f'{head_infomation_map["blog_root_url"]}{article.get_og_image_save_relative_path()}') + WRAPPER            
         text += '    <meta name="twitter:card" content="summary_large_image"/>' + WRAPPER
         text += '    <meta name="twitter:site" content="{}"/>'.format(head_infomation_map['twitter_site']) + WRAPPER
         text += '    <meta name="twitter:creator" content="{}"/>'.format(head_infomation_map['twitter_creator']) + WRAPPER
