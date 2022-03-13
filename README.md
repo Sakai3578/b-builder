@@ -2,7 +2,7 @@
 
 ↓のサイト運用において実際に使用しています。
 
-https://it.sakai-sc.co.jp/
+https://docs.sakai-sc.co.jp/
 
 
 ご自身のブログ構築（個人・商用問わず）に利用していただいてもOKです。
